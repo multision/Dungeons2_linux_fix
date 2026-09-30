@@ -1,66 +1,74 @@
-# Minecraft Dungeons II on Linux
+# Minecraft Dungeons II — CrossOver and account linking
 
-A local stand-in for Microsoft Gaming Services so Minecraft Dungeons II (Steam app `1912410`) can start under Proton. The game looks for `xgameruntime.dll`. This repository builds that DLL. It does not modify the game and it does not include Microsoft's library.
+A local replacement for `xgameruntime.dll` for the Steam build of Minecraft Dungeons II under CrossOver on macOS.
 
-On first launch it signs you in with your own Microsoft account through the normal device-code page at <https://www.microsoft.com/link>, then caches the Xbox token next to the helper. Later launches reuse that cache until it expires.
+This combines [typester's CrossOver fixes](https://github.com/typester/Dungeons2_linux_fix/tree/crossover-fixes) at `0c53d48ed320a259bfb5c1c453904ed57fc5f49c` with the Linux parent's [PlayFab account-linking patch](https://github.com/Kubas556/Dungeons2_linux_fix/commit/c10de41). It uses the upstream Python authentication helper.
 
-## Install
+## Changes
 
-Proton and Python 3 are required. Clone this repository into the directory the DLL searches:
+- Accept unsupported WinHTTP decompression option 118 only when it fails with error 12009, allowing XCurl to send requests.
+- Find XCurl's WinHTTP imports by name.
+- Launch the Python sign-in helper natively on Apple Silicon and use the macOS browser opener.
+- Use `WINE_HOST_HOME` and `LOCALAPPDATA` for host and bottle paths.
+- Generate device-bound Xbox, Minecraft, and PlayFab tokens, and return the PlayFab token when the game requests `playfabapi.com`.
+
+## Validation
+
+The CrossOver build before the account-linking patch reached the main screen and gameplay on Apple Silicon. Steam login returned HTTP 200; Microsoft account linking returned HTTP 500.
+
+The combined build compiled with MinGW GCC 16.2.0, its DLL exports were checked, and the helper's proof-key generation and request signing passed a local OpenSSL test. It has been installed for testing. Successful account linking with this combined build has not yet been confirmed.
+
+GCC reports two existing warnings about long local-storage paths potentially exceeding `MAX_PATH`.
+
+## Install on macOS
+
+Close Minecraft Dungeons II first. The bottle's Steam client can remain open.
+
+Install the helper where the DLL expects it:
 
 ```sh
-git clone git@github.com:Kubas556/Dungeons2_linux_fix.git ~/.local/share/dungeons2-compat
-cd ~/.local/share/dungeons2-compat
-chmod +x install.sh xauth.py
-./install.sh
+mkdir -p ~/.local/share/dungeons2-compat
+cp xauth.py ~/.local/share/dungeons2-compat/xauth.py
+chmod +x ~/.local/share/dungeons2-compat/xauth.py
 ```
 
-`install.sh` copies `src/xgameruntime.dll` to three places:
+Python 3 and the `openssl` command must be available. The helper uses Python's standard library.
 
-- next to `Dungeons.exe`
-- next to `Dungeons-Win64-Shipping.exe`
-- into the Proton prefix `drive_c/windows/system32`
-
-If the game lives in another Steam library, the script reads `libraryfolders.vdf`. Point `STEAM_ROOT` at your Steam install if it is not `~/.local/share/Steam`.
-
-In Steam, open the game's properties and set the launch option:
+Back up and copy `src/xgameruntime.dll` to these three locations inside your bottle:
 
 ```text
-WINEDLLOVERRIDES="xgameruntime=n" %command%
+C:\windows\system32\xgameruntime.dll
+C:\Program Files (x86)\Steam\steamapps\common\Minecraft Dungeons II\xgameruntime.dll
+C:\Program Files (x86)\Steam\steamapps\common\Minecraft Dungeons II\Dungeons\Binaries\Win64\xgameruntime.dll
 ```
 
-Quit the game completely before installing. A running process keeps the old DLL.
+Adjust the Steam location if your installation differs. In CrossOver's Wine Configuration, add `xgameruntime` under Libraries and select native first if needed.
 
-## First sign-in
+Launch through Steam. The helper may open Microsoft's device-code sign-in page. Existing compatible credentials can be reused; older caches without a PlayFab token need renewal.
 
-Start the game from Steam. A window shows a code and opens <https://www.microsoft.com/link>. Enter the code, then sign in with the Microsoft account that should own the Xbox profile. Leave that page as `https://www.microsoft.com/link` with no extra query string.
+The helper writes its cache to `~/.local/share/dungeons2-compat/tokens.txt`. The DLL also checks `C:\users\steamuser\AppData\Local\Dungeons2\tokens.txt` first. If that bottle cache exists but is expired or lacks the PlayFab token, rename it as a backup so the renewed helper cache can be used.
 
-The token file is `~/.local/share/dungeons2-compat/tokens.txt` (mode `0600`). Do not share it. When it expires, the next launch refreshes it or asks you to sign in again.
+The runtime writes diagnostics to `C:\xgr.log`. Inspect logs locally; they may contain sensitive signed URLs. Never publish token caches or unfiltered logs.
 
-## Microsoft account linking
+## Build
 
-Linking a Microsoft account in the game settings can fail with a server error. PlayFab rejects the Xbox token this `main` build supplies.
-
-A fix is on [`cursor/playfab-account-linking`](https://github.com/Kubas556/Dungeons2_linux_fix/tree/cursor/playfab-account-linking). After a normal install:
+Install MinGW-w64, then run:
 
 ```sh
-cd ~/.local/share/dungeons2-compat
-git fetch origin
-git checkout cursor/playfab-account-linking
-./install.sh
+brew install mingw-w64
+./build.sh
 ```
 
-Quit the game first. The next launch signs you in again so it can mint a PlayFab token.
+The prebuilt DLL is Windows x86-64. SHA-256:
 
-## Rebuild
-
-The DLL already in `src/` is ready to install. To build it yourself you need a MinGW-w64 posix cross compiler:
-
-```sh
-x86_64-w64-mingw32-gcc-posix -shared -O2 -Wall -Wextra -o src/xgameruntime.dll src/xgameruntime.c
-./install.sh
+```text
+8d3545a9caf7e958085bfb95cfb5fa200c93e540b1094aa29a0eaeb3b0d6b609
 ```
 
-## What the game gets
+## Credits and license
 
-The DLL answers the Gaming Services calls this title makes: task queues, a signed-in Xbox user (your real XUID and gamertag from the cache), title id, retail sandbox, persistent local storage, and the HTTPS security settings XCurl asks for before it connects. PlayFab login still uses the Steam session. The Microsoft token is returned only when the game asks for one.
+Original compatibility shim and account-linking work: [Kubas556/Dungeons2_linux_fix](https://github.com/Kubas556/Dungeons2_linux_fix).
+
+CrossOver adaptation: [typester/Dungeons2_linux_fix](https://github.com/typester/Dungeons2_linux_fix), [upstream PR #5](https://github.com/Kubas556/Dungeons2_linux_fix/pull/5).
+
+Distributed under the upstream MIT license; see [LICENSE](LICENSE).

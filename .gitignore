@@ -1,7 +1,13 @@
-/xgameruntime.dll
 tokens.txt
+tokens.txt.*
 login-code.txt
 login-error.txt
+xgr.log*
+*.pem
 __pycache__/
+.DS_Store
+*.backup-*
+*.before-*
+/xgameruntime.dll
 *.pyc
 src/test_xgr.exe
